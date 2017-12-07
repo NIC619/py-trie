@@ -2,6 +2,10 @@ from __future__ import absolute_import
 
 from trie.constants import (
     BLANK_NODE,
+    BLANK_HASH,
+    LEAF_TYPE,
+    KV_TYPE,
+    BRANCH_TYPE,
 )
 from trie.exceptions import (
     ValidationError,
@@ -38,5 +42,12 @@ def validate_is_node(node):
             else:
                 validate_is_bytes(sub_node)
                 validate_length(sub_node, 32)
+    else:
+        raise ValidationError("Invalid Node: {0}".format(node))
+
+
+def validate_is_bin_node(node):
+    if node == BLANK_HASH or node[0] == BRANCH_TYPE or node[0] == KV_TYPE or node[0] == LEAF_TYPE:
+        return
     else:
         raise ValidationError("Invalid Node: {0}".format(node))

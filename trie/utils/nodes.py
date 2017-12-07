@@ -4,9 +4,19 @@ from trie.constants import (
     NODE_TYPE_EXTENSION,
     NODE_TYPE_BRANCH,
     BLANK_NODE,
+    KV_TYPE,
+    BRANCH_TYPE,
+    LEAF_TYPE,
 )
 from trie.exceptions import (
     InvalidNode,
+)
+from trie.utils.binaries import (
+    encode_from_bin_keypath,
+    decode_to_bin_keypath,
+)
+from trie.validation import (
+    validate_length,
 )
 
 from .nibbles import (
@@ -89,3 +99,46 @@ def consume_common_prefix(left_key, right_key):
 
 def key_starts_with(full_key, partial_key):
     return all(left == right for left, right in zip(full_key, partial_key))
+
+
+# Binary Trie node utils
+def parse_node(node):
+    """
+    Input: a serialized node
+    """
+    if node[0] == BRANCH_TYPE:
+        # Output: left child, right child, node type
+        return node[1:33], node[33:], BRANCH_TYPE
+    elif node[0] == KV_TYPE:
+        # Output: keypath: child, node type
+        return decode_to_bin_keypath(node[1:-32]), node[-32:], KV_TYPE
+    elif node[0] == LEAF_TYPE:
+        # Output: None, value, node type
+        return None, node[1:], LEAF_TYPE
+    else:
+        raise InvalidNode("Unable to parse node")
+
+
+def encode_kv_node(keypath, node):
+    """
+    Serializes a key/value node
+    """
+    assert keypath
+    validate_length(node, 32)
+    return bytes([KV_TYPE]) + encode_from_bin_keypath(keypath) + node
+
+
+def encode_branch_node(left_node, right_node):
+    """
+    Serializes a branch node (ie. a node with 2 children)
+    """
+    validate_length(left_node, 32)
+    validate_length(right_node, 32)
+    return bytes([BRANCH_TYPE]) + left_node + right_node
+
+
+def encode_leaf_node(value):
+    """
+    Serializes a leaf node
+    """
+    return bytes([LEAF_TYPE]) + value
