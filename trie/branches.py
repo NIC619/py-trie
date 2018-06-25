@@ -22,6 +22,7 @@ from trie.utils.nodes import (
     parse_node,
 )
 from trie.validation import (
+    validate_length,
     validate_is_bytes,
     validate_is_bin_node,
 )
@@ -194,3 +195,39 @@ def _get_witness_for_key_prefix(db, node_hash, keypath):
             yield from _get_witness_for_key_prefix(db, right_child, keypath[1:])
     else:
         raise Exception("Invariant: unreachable code path")
+
+
+def get_sparse_merkle_tree_proof(db, root_hash, key):
+    validate_is_bytes(key)
+    validate_length(key, 20)
+
+    proof = []
+    target_bit = 1 << 159
+    path = int.from_bytes(key, byteorder='big')
+    node_hash = root_hash
+    for _ in range(160):
+        if path & target_bit:
+            proof.append(db[node_hash][:32])
+            node_hash = db[node_hash][32:]
+        else:
+            proof.append(db[node_hash][32:])
+            node_hash = db[node_hash][:32]
+        target_bit >>= 1
+    return proof
+
+
+def verify_sparse_merkle_tree_proof(root_hash, key, value, proof):
+    validate_is_bytes(key)
+    validate_length(key, 20)
+    validate_is_bytes(value)
+
+    target_bit = 1
+    path = int.from_bytes(key, byteorder='big')
+    node_hash = keccak(value)
+    for i in range(160):
+        if path & target_bit:
+            node_hash = keccak(proof[-1-i] + node_hash)
+        else:
+            node_hash = keccak(node_hash + proof[-1-i])
+        target_bit <<= 1
+    return root_hash == node_hash
