@@ -1,7 +1,17 @@
 import pytest
 
+from hypothesis import (
+    given,
+    strategies as st,
+)
 from trie.binary import (
     BinaryTrie,
+)
+from trie.sparse_merkle_tree import (
+    SparseMerkleTree,
+)
+from trie.constants import (
+    EMPTY_NODE_HASHES,
 )
 from trie.exceptions import (
     InvalidKeyError,
@@ -13,6 +23,8 @@ from trie.branches import (
     if_branch_valid,
     get_trie_nodes,
     get_witness_for_key_prefix,
+    get_sparse_merkle_tree_proof,
+    verify_sparse_merkle_tree_proof,
 )
 
 
@@ -166,3 +178,35 @@ def test_get_witness_for_key_prefix(test_trie, key, nodes):
     else:
         with pytest.raises(InvalidKeyError):
             get_witness_for_key_prefix(test_trie.db, test_trie.root_hash, key)
+
+
+@given(k=st.lists(st.binary(min_size=20, max_size=20), min_size=30, max_size=30, unique=True),
+       v=st.lists(st.binary(min_size=1), min_size=30, max_size=30))
+def test_sparse_merkle_tree_proof(k, v):
+    kv_pairs = list(zip(k, v))
+
+    # Test proof after batch update
+    trie = SparseMerkleTree(db={})
+    for k, v in kv_pairs:
+        trie.set(k, v)
+    for k, v in kv_pairs:
+        proof = get_sparse_merkle_tree_proof(trie.db, trie.root_hash, k)
+        assert len(proof) == 160
+        assert verify_sparse_merkle_tree_proof(trie.root_hash, k, v, proof)
+    # Empty the trie and check that proofs all consist of empty node hashes 
+    for k, _ in kv_pairs:
+        trie.set(k, b'')
+    for k, _ in kv_pairs:
+        assert EMPTY_NODE_HASHES == get_sparse_merkle_tree_proof(trie.db, trie.root_hash, k)
+
+    # Test proof after each update
+    proof_after_each_update = {}
+    for k, v in kv_pairs[:-1]:
+        trie.set(k, v)
+        proof_after_each_update[k] = get_sparse_merkle_tree_proof(trie.db, trie.root_hash, k)
+        assert len(proof_after_each_update[k]) == 160
+        assert verify_sparse_merkle_tree_proof(trie.root_hash, k, v, proof_after_each_update[k])
+    trie.set(kv_pairs[-1][0], kv_pairs[-1][1])
+    # Check that outdated proof should not pass verification
+    for k, v in kv_pairs[:-1]:
+        assert not verify_sparse_merkle_tree_proof(trie.root_hash, k, v, proof_after_each_update[k])
